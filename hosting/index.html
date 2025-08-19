@@ -1,0 +1,233 @@
+<!DOCTYPE html> 
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mall Surveillance System</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/static/css/style.css" />
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <audio id="siren" src="/static/assets/police-siren-sound-effect-317645.mp3" preload="auto"></audio>
+
+  <!-- Mobile menu (shown only on mobile, shown only after login via JS) -->
+  <button id="menuToggle" class="menu-toggle hidden" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+
+  <div id="app">
+    <!-- Sidebar (visible only after login; role-filtered via JS) -->
+    <div id="sidebar" class="sidebar hidden">
+      <div class="brand">MALL SS</div>
+      <nav>
+        <a href="#/admin/dashboard" data-role="admin">Admin Dashboard</a>
+        <a href="#/admin/alerts" data-role="admin">Admin Alert</a>
+        <a href="#/admin/activity" data-role="admin">Admin Activity Log</a>
+        <a href="#/admin/cameras" data-role="admin">Admin Cameras</a>
+        <a href="#/admin/settings" data-role="admin">Admin Settings</a>
+
+        <a href="#/personnel/dashboard" data-role="personnel">Personnel Dashboard</a>
+        <a href="#/personnel/settings" data-role="personnel">Personnel Settings</a>
+      </nav>
+
+      <button id="logoutBtn" class="logout">Logout</button>
+
+      <div class="theme-toggle">
+        <label class="switch">
+          <input type="checkbox" id="themeSwitch" />
+          <span class="slider"></span>
+        </label>
+        <span>Dark mode</span>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <main id="main">
+      <div id="loader" class="loader hidden"></div>
+      <div id="content"></div>
+    </main>
+  </div>
+
+  <!-- Cursor glow effect -->
+  <div class="cursor-glow" id="cursorGlow" aria-hidden="true"></div>
+
+  <!-- Templates -->
+  <template id="loginTpl">
+    <div class="login-card">
+      <h1>Sign in</h1>
+      <form id="loginForm">
+        <input type="email" id="email" placeholder="Email" required />
+        <input type="password" id="password" placeholder="Password" required />
+        <button type="submit">Login</button>
+      </form>
+    </div>
+  </template>
+
+  <template id="adminDashboardTpl">
+    <section class="page">
+      <h2>Admin Dashboard</h2>
+
+      <!-- Cloud-run video stream -->
+      <div class="video-wrap">
+        <img id="videoStream" alt="Live stream" />
+      </div>
+
+      <!-- 🔥 Added: Browser webcam -->
+      <div class="video-wrap">
+        <h3>Browser Webcam</h3>
+        <video id="browserCam" autoplay playsinline muted></video>
+      </div>
+
+      <div class="cards">
+        <div class="card"><h3>Status</h3><div id="statusText" class="pill"></div></div>
+        <div class="card"><h3>Threat Level</h3><div id="threatText" class="pill"></div></div>
+        <div class="card"><h3>Cameras Active</h3><div id="cameraCount" class="pill"></div></div>
+        <div class="card"><h3>Alerts Today</h3><ul id="alertsToday"></ul></div>
+      </div>
+    </section>
+  </template>
+
+  <template id="personnelDashboardTpl">
+    <section class="page">
+      <h2>Personnel Dashboard</h2>
+
+      <!-- 🔥 Added: Browser webcam for personnel -->
+      <div class="video-wrap">
+        <h3>Browser Webcam</h3>
+        <video id="p_browserCam" autoplay playsinline muted></video>
+      </div>
+
+      <div class="cards">
+        <div class="card"><h3>Status</h3><div id="p_statusText" class="pill"></div></div>
+        <div class="card"><h3>Threat Level</h3><div id="p_threatText" class="pill"></div></div>
+        <div class="card"><h3>Cameras Active</h3><div id="p_cameraCount" class="pill"></div></div>
+        <div class="card"><h3>Alerts Today</h3><ul id="p_alertsToday"></ul></div>
+      </div>
+    </section>
+  </template>
+
+  <template id="adminAlertsTpl">
+    <section class="page">
+      <h2>Admin Alert</h2>
+      <div id="pendingList" class="pending-list"></div>
+    </section>
+  </template>
+
+  <template id="adminActivityTpl">
+    <section class="page">
+      <h2>Admin Activity Log</h2>
+      <table class="table" id="activityTable">
+        <thead><tr><th>Name</th><th>Time</th><th>Camera</th><th>Threat</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </template>
+
+  <template id="adminCamerasTpl">
+    <section class="page">
+      <h2>Admin Camera Management</h2>
+      <form id="addCameraForm" class="inline">
+        <input id="camName" placeholder="Camera name" required />
+        <input id="camSrc" placeholder="Source (index or URL)" required />
+        <button type="submit">Add Camera</button>
+      </form>
+      <div id="cameraList" class="list"></div>
+    </section>
+  </template>
+
+  <template id="adminSettingsTpl">
+    <section class="page">
+      <h2>Admin Settings</h2>
+      <div class="settings-grid">
+        <div class="card">
+          <form id="langForm">
+            <h3>Language</h3>
+            <select id="language">
+              <option>english</option>
+              <option>french</option>
+              <option>espanio</option>
+            </select>
+            <button type="submit">Save Language</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <form id="addUserForm">
+            <h3>Add User</h3>
+            <input id="newName" placeholder="Name" required />
+            <input id="newEmail" placeholder="Email" required />
+            <input id="newPassword" type="password" placeholder="Password" required />
+            <select id="newRole">
+              <option value="admin">admin</option>
+              <option value="personnel">personnel</option>
+            </select>
+            <button type="submit">Create</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <form id="adminPwForm">
+            <h3>Change Password</h3>
+            <input type="password" id="adminOldPw" placeholder="Current Password" required />
+            <input type="password" id="adminNewPw" placeholder="New Password" required />
+            <button type="submit">Update Password</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <template id="personnelSettingsTpl">
+    <section class="page">
+      <h2>Personnel Settings</h2>
+      <div class="settings-grid">
+        <div class="card">
+          <form id="p_langForm">
+            <h3>Language</h3>
+            <select id="p_language">
+              <option>english</option>
+              <option>french</option>
+              <option>espanio</option>
+            </select>
+            <button type="submit">Save Language</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <form id="p_pwForm">
+            <h3>Change Password</h3>
+            <input type="password" id="p_oldPw" placeholder="Current Password" required />
+            <input type="password" id="p_newPw" placeholder="New Password" required />
+            <button type="submit">Update Password</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <script>
+    // Firebase config (unchanged)
+    const firebaseConfig = {
+      apiKey: "AIzaSyAw6xEu54wDXg18o9BXFUTEPadLPAR1-6M",
+      authDomain: "mall-surveillance-system.firebaseapp.com",
+      projectId: "mall-surveillance-system",
+      storageBucket: "mall-surveillance-system.firebasestorage.app",
+      messagingSenderId: "849136562379",
+      appId: "1:849136562379:web:386218048dfe4fbaf76b4e"
+    };
+  </script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

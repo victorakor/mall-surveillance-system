@@ -1,0 +1,35 @@
+# -----------------------------
+# Web framework + Realtime
+# -----------------------------
+flask==3.0.3
+flask-socketio==5.3.6
+flask-cors==4.0.1
+eventlet==0.36.1
+
+# -----------------------------
+# Computer Vision + AI
+# -----------------------------
+opencv-python==4.10.0.84
+ultralytics==8.2.103
+numpy==1.26.4
+pillow==10.4.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# -----------------------------
+# Firebase / Auth
+# -----------------------------
+firebase-admin==6.5.0
+python-dotenv==1.0.1
+
+# -----------------------------
+# Deployment / Production
+# -----------------------------
+gunicorn==23.0.0
+gevent==24.2.1
+requests==2.32.3
+
+# -----------------------------
+# Dev / Debug (safe for Python 3.9)
+# -----------------------------
+ipython>=7.31.1,<8.12

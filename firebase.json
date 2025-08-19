@@ -1,0 +1,23 @@
+{
+  "hosting": {
+    "public": "hosting",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=300" }
+        ]
+      }
+    ],
+    "rewrites": [
+      { "source": "/socket.io/**", "destination": "https://<YOUR_TUNNEL_URL>" },
+      { "source": "/api/**", "destination": "https://<YOUR_TUNNEL_URL>" },
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}
