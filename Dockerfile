@@ -14,13 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies first (caching layer)
+# Install Python dependencies first (better Docker caching)
 COPY requirements.txt .
 RUN python -m pip install --upgrade pip && pip install -r requirements.txt
 
-# Copy the rest of your app (templates, static, YOLO weights, etc.)
+# Copy the rest of your application (templates, static, YOLO weights, etc.)
 COPY . .
 
-# Render sets $PORT automatically, bind to it
+# Render sets $PORT automatically; don’t hardcode 8000
 EXPOSE 10000
+
+# Start the app with Gunicorn + Eventlet (required for Flask-SocketIO)
 CMD ["bash","-lc","exec gunicorn -k eventlet -w 1 -b 0.0.0.0:$PORT app:app"]

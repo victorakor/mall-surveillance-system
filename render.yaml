@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: mall-surveillance-backend
+    runtime: docker
+    plan: starter               # pick starter/standard depending on your needs
+    autoDeploy: true
+    envVars:
+      - key: FIREBASE_DB_URL
+        sync: false             # set manually in Render dashboard (your Firebase RTDB URL)
+      - key: FIREBASE_SERVICE_ACCOUNT_PATH
+        value: /etc/secrets/serviceAccountKey.json
+      - key: FLASK_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: "http://localhost:8000"   # local dev
+      - key: YOLO_MODEL_PATH
+        value: best.pt
+      - key: SOCKETIO_ASYNC
+        value: eventlet

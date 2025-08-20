@@ -27,3 +27,4 @@ Thumbs.db
 
 # Render/Docker
 docker-compose.override.yml
+serviceAccountKey.json
