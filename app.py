@@ -1,8 +1,4 @@
 import os
-import base64
-import time
-import numpy as np
-import cv2
 from functools import wraps
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, Response, jsonify
@@ -10,13 +6,13 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from firebase_admin import auth as fbauth, db
 
-import firebase_manager as fm
-import yolov8_detection
-from yolov8_detection import mjpeg_generator, CameraWorker
-
 # --- Fix OpenCV backend for Windows webcams ---
 os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"   # disable MSMF
 os.environ["OPENCV_VIDEOIO_PRIORITY_DSHOW"] = "1"  # force DSHOW
+
+import cv2
+import firebase_manager as fm
+from yolov8_detection import mjpeg_generator, CameraWorker
 
 # --------------------------------------------------------------------------------------
 # App setup
@@ -30,9 +26,8 @@ app.secret_key = SECRET
 CORS(app, supports_credentials=True,
      origins="*" if "*" in ALLOWED_ORIGINS else ALLOWED_ORIGINS)
 
-# Socket.IO async mode is selectable by env (default=threading for Windows)
-SOCKETIO_ASYNC = os.getenv("SOCKETIO_ASYNC", "threading")
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode=SOCKETIO_ASYNC)
+# Use threading to avoid eventlet/gevent issues on Windows
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Ensure default admin exists at startup
 fm.ensure_default_admin()
@@ -202,43 +197,6 @@ def set_language():
     lang = (request.json or {}).get("language", "english")
     fm.set_user_language(uid, lang)
     return jsonify({"ok": True})
-
-# --------- New: Browser webcam upload ---------
-@app.post("/api/upload_frame")
-@verify_firebase_token
-def upload_frame():
-    """Accept a base64 JPEG frame from the browser, run YOLO, return detections."""
-    try:
-        data = request.get_json(silent=True) or {}
-        img_b64 = data.get("frame")
-        if not img_b64:
-            return jsonify({"error": "No 'frame' provided"}), 400
-
-        # Handle data URL format
-        if "," in img_b64:
-            img_b64 = img_b64.split(",", 1)[1]
-        img_bytes = base64.b64decode(img_b64)
-        npbuf = np.frombuffer(img_bytes, np.uint8)
-        frame = cv2.imdecode(npbuf, cv2.IMREAD_COLOR)
-        if frame is None:
-            return jsonify({"error": "Invalid image"}), 400
-
-        annotated, dets, threat = yolov8_detection.get_detector().detect_frame(frame)
-        fm.set_threat_level(threat)
-
-        if dets:
-            first = dets[0]
-            fm.push_alert_today({
-                "label": first.get("label", "event"),
-                "camera": "browser",
-                "conf": first.get("conf"),
-                "createdAt": time.time()
-            })
-
-        return jsonify({"detections": dets, "threatLevel": threat})
-    except Exception as e:
-        app.logger.exception("upload_frame failed")
-        return jsonify({"error": str(e)}), 500
 
 # --------- SocketIO namespace ---------
 @socketio.on("connect", namespace="/stream")

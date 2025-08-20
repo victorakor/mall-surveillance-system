@@ -1,4 +1,4 @@
-// SPA + Auth + Routing + UI glue (original logic preserved)
+// SPA + Auth + Routing + UI glue
 const appEl = document.getElementById('app');
 const sidebarEl = document.getElementById('sidebar');
 const contentEl = document.getElementById('content');
@@ -6,10 +6,6 @@ const loaderEl = document.getElementById('loader');
 const themeSwitch = document.getElementById('themeSwitch');
 const logoutBtn = document.getElementById('logoutBtn');
 const sirenEl = document.getElementById('siren');
-
-// NEW: mobile toggle + cursor glow handles (styling-only helpers)
-const menuToggleBtn = document.getElementById('menuToggle');
-const cursorGlow = document.getElementById('cursorGlow');
 
 // ---- Firebase ----
 firebase.initializeApp(firebaseConfig);
@@ -86,24 +82,12 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 if (savedTheme === 'dark' && themeSwitch) themeSwitch.checked = true;
 
 function showLoader(show=true){ loaderEl?.classList.toggle('hidden', !show); }
-function setSidebarVisible(vis){
-  sidebarEl?.classList.toggle('hidden', !vis);
-  // if we hide the sidebar (e.g., at login screen), also close mobile state & reset button
-  if (!vis) {
-    sidebarEl?.classList.remove('open');
-    menuToggleBtn?.classList.remove('open');
-  }
-}
-function setMenuToggleVisible(vis){
-  // menu toggle is only used on mobile; we still add/remove hidden to ensure it's not clickable pre-login
-  menuToggleBtn?.classList.toggle('hidden', !vis);
-}
+function setSidebarVisible(vis){ sidebarEl?.classList.toggle('hidden', !vis); }
 
 // ---- Login UI ----
 function showLogin(){
   clearPageIntervals();
   setSidebarVisible(false);
-  setMenuToggleVisible(false);
   contentEl.innerHTML = document.getElementById('loginTpl').innerHTML;
   const form = document.getElementById('loginForm');
   form.addEventListener('submit', async (e) => {
@@ -183,7 +167,6 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   setSidebarVisible(true);
-  setMenuToggleVisible(true);
   route();
 });
 
@@ -206,10 +189,6 @@ logoutBtn?.addEventListener('click', async ()=>{
     } catch(_) {}
   }
   await auth.signOut();
-  // UI hygiene
-  setMenuToggleVisible(false);
-  sidebarEl?.classList.remove('open');
-  menuToggleBtn?.classList.remove('open');
 });
 
 window.addEventListener('beforeunload', async () => {
@@ -231,7 +210,6 @@ async function route(){
   const hash = location.hash || '#/login';
   if (!currentUser) return showLogin();
 
-  // Filter visible links by role
   Array.from(sidebarEl.querySelectorAll('a')).forEach(a => {
     const allowed = a.dataset.role;
     const show = !allowed || allowed === currentRole;
@@ -283,42 +261,6 @@ function attachLiveVideo(imgEl) {
   };
 }
 
-// ---------- NEW: Browser webcam upload ----------
-async function startBrowserCamera(videoEl) {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    videoEl.srcObject = stream;
-    videoEl.play();
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    async function sendFrame() {
-      if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
-        canvas.width = videoEl.videoWidth;
-        canvas.height = videoEl.videoHeight;
-        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-        const b64 = canvas.toDataURL('image/jpeg', 0.6);
-
-        try {
-          const res = await api('/api/upload_frame', {
-            method: 'POST',
-            body: JSON.stringify({ frame: b64 })
-          });
-          maybePlaySiren(res);
-        } catch (err) {
-          console.error('upload_frame failed', err.message);
-        }
-      }
-      setTimeout(sendFrame, 1000); // 1 FPS to balance performance
-    }
-
-    sendFrame();
-  } catch (err) {
-    console.error('Could not access webcam:', err);
-  }
-}
-
 // ---------- Pages ----------
 async function renderAdminDashboard(){
   contentEl.innerHTML = document.getElementById('adminDashboardTpl').innerHTML;
@@ -340,12 +282,6 @@ async function renderAdminDashboard(){
       renderAlertsToday('alertsToday', data.alertsToday);
     } catch(e){}
   }, 2000);
-
-  // 🔥 If we also want browser webcam mode:
-  const browserCamEl = document.getElementById('browserCam');
-  if (browserCamEl) {
-    startBrowserCamera(browserCamEl);
-  }
 }
 
 function renderAlertsToday(containerId, items){
@@ -383,12 +319,6 @@ async function renderPersonnelDashboard(){
       renderAlertsToday('p_alertsToday', data.alertsToday);
     } catch(e){}
   }, 2000);
-
-  // 🔥 Also allow browser webcam here if needed
-  const browserCamEl = document.getElementById('p_browserCam');
-  if (browserCamEl) {
-    startBrowserCamera(browserCamEl);
-  }
 }
 
 async function renderAdminAlerts(){
@@ -489,7 +419,7 @@ async function renderAdminSettings(){
     e.target.reset();
   });
 
-  // Change password
+  // ✅ Change password
   document.getElementById('adminPwForm')?.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const oldPw = document.getElementById('adminOldPw').value;
@@ -516,7 +446,7 @@ async function renderPersonnelSettings(){
     alert('Language saved');
   });
 
-  // Change password
+  // ✅ Change password
   document.getElementById('p_pwForm')?.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const oldPw = document.getElementById('p_oldPw').value;
@@ -536,35 +466,3 @@ async function renderPersonnelSettings(){
 // ---- Boot ----
 if (!location.hash) location.hash = '#/login';
 route();
-
-/* =========================================================
-   Styling-only helpers (do not affect business logic)
-========================================================= */
-// Mobile sidebar toggle
-menuToggleBtn?.addEventListener('click', () => {
-  // Toggle off-canvas sidebar only; desktop ignores via CSS
-  sidebarEl?.classList.toggle('open');
-  menuToggleBtn.classList.toggle('open');
-});
-
-// Close mobile sidebar after a nav click (so it doesn't cover main screen)
-sidebarEl?.querySelectorAll('a').forEach(a => {
-  a.addEventListener('click', () => {
-    sidebarEl?.classList.remove('open');
-    menuToggleBtn?.classList.remove('open');
-  });
-});
-
-// Cursor glow follow + subtle scale on interactive hover
-document.addEventListener('mousemove', (e) => {
-  if (!cursorGlow) return;
-  cursorGlow.style.left = e.pageX + 'px';
-  cursorGlow.style.top = e.pageY + 'px';
-  cursorGlow.style.opacity = '1';
-});
-['a','button','.pill','.card'].forEach(sel => {
-  document.querySelectorAll(sel).forEach(el => {
-    el.addEventListener('mouseenter', () => { if (cursorGlow) cursorGlow.style.transform = 'translate(-50%, -50%) scale(1.25)'; });
-    el.addEventListener('mouseleave', () => { if (cursorGlow) cursorGlow.style.transform = 'translate(-50%, -50%) scale(1)'; });
-  });
-});

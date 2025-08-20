@@ -8,14 +8,30 @@ from firebase_admin import credentials, db, auth
 from dotenv import load_dotenv
 load_dotenv()
 
-SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "serviceAccountKey.json")
+# ----- Service Account & DB URL -----
+SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+
+if not SERVICE_ACCOUNT_PATH:
+    # Default to Render's secret mount path if present
+    render_path = "/etc/secrets/serviceAccountKey.json"
+    if os.path.exists(render_path):
+        SERVICE_ACCOUNT_PATH = render_path
+    else:
+        # Fallback for local dev (file in repo root)
+        SERVICE_ACCOUNT_PATH = "serviceAccountKey.json"
+
 DB_URL = os.getenv("FIREBASE_DB_URL")
 
+# Initialize Firebase app
 if not firebase_admin._apps:
     if not os.path.exists(SERVICE_ACCOUNT_PATH):
-        raise FileNotFoundError(f"Missing service account file at {SERVICE_ACCOUNT_PATH}. Place it and update .env")
+        raise FileNotFoundError(
+            f"Missing service account file at {SERVICE_ACCOUNT_PATH}. "
+            f"Ensure it exists locally or is added to Render Secret Files."
+        )
     cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
     firebase_admin.initialize_app(cred, {"databaseURL": DB_URL} if DB_URL else None)
+
 
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -30,7 +46,9 @@ def ensure_default_admin():
         user = auth.get_user_by_email(email)
         uid = user.uid
     except auth.UserNotFoundError:
-        user = auth.create_user(email=email, password=password, display_name=display_name, disabled=False)
+        user = auth.create_user(
+            email=email, password=password, display_name=display_name, disabled=False
+        )
         uid = user.uid
 
     # Always enforce admin role via custom claims + DB
@@ -43,6 +61,7 @@ def ensure_default_admin():
         "createdAt": _now_iso()
     })
     return uid
+
 
 def create_user(name: str, email: str, password: str, role: str):
     user = auth.create_user(email=email, password=password, display_name=name, disabled=False)
@@ -58,13 +77,16 @@ def create_user(name: str, email: str, password: str, role: str):
     })
     return uid
 
+
 def update_user_password(uid: str, new_password: str):
     auth.update_user(uid, password=new_password)
     return True
 
+
 def set_user_language(uid: str, language: str):
     db.reference(f"/users/{uid}/prefs").update({"language": language.lower()})
     return True
+
 
 def get_user(uid: str) -> Dict[str, Any]:
     return db.reference(f"/users/{uid}").get() or {}
@@ -72,6 +94,7 @@ def get_user(uid: str) -> Dict[str, Any]:
 # ----- Cameras -----
 def list_cameras() -> Dict[str, Any]:
     return db.reference("/cameras").get() or {}
+
 
 def add_camera(name: str, source: str) -> str:
     ref = db.reference("/cameras").push({
@@ -82,8 +105,10 @@ def add_camera(name: str, source: str) -> str:
     })
     return ref.key
 
+
 def update_camera(camera_id: str, data: Dict[str, Any]):
     db.reference(f"/cameras/{camera_id}").update(data)
+
 
 def cameras_active_count() -> int:
     cams = list_cameras()
@@ -93,20 +118,27 @@ def cameras_active_count() -> int:
 def set_system_status(running: bool):
     db.reference("/system/status").set({"running": running, "updatedAt": _now_iso()})
 
+
 def set_threat_level(level: str):
     db.reference("/system/threatLevel").set({"level": level, "updatedAt": _now_iso()})
+
 
 def get_dashboard_snapshot():
     status = db.reference("/system/status").get() or {"running": False}
     threat = db.reference("/system/threatLevel").get() or {"level": "low"}
     alerts_today = db.reference("/dashboard/alertsToday").order_by_child("createdAt").limit_to_last(3).get() or {}
-    alerts_list = sorted(list(alerts_today.values()), key=lambda x: x.get("createdAt", ""), reverse=True)[:3]
+    alerts_list = sorted(
+        list(alerts_today.values()),
+        key=lambda x: x.get("createdAt", ""),
+        reverse=True
+    )[:3]
     return {
         "status": status.get("running", False),
         "threatLevel": threat.get("level", "low"),
         "camerasActive": cameras_active_count(),
         "alertsToday": alerts_list
     }
+
 
 def push_alert_today(item: Dict[str, Any]):
     db.reference("/dashboard/alertsToday").push(item)
@@ -115,6 +147,7 @@ def push_alert_today(item: Dict[str, Any]):
 def save_detection_verified(d: Dict[str, Any]):
     d = {**d, "savedAt": _now_iso(), "status": d.get("status", "verified")}
     db.reference("/detections").push(d)
+
 
 def get_verified_today() -> List[Dict[str, Any]]:
     items = db.reference("/detections").order_by_child("status").equal_to("verified").get() or {}
